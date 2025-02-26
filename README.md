@@ -3,7 +3,6 @@
 <div align="center">
 
 ![CodeSelect Logo](https://img.shields.io/badge/CodeSelect-1.0.0-blue)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 **Easily select and share code with AI assistants**
 
@@ -11,13 +10,11 @@
 
 CodeSelect is a lightweight tool that helps developers share code with AI assistants like Claude or ChatGPT. It provides a simple interface to select files from a project and exports them in an AI-friendly format with intelligent context about project structure and relationships between files.
 
-<img src="https://user-images.githubusercontent.com/12345678/example-screenshot.png" alt="CodeSelect Interface" width="600"/>
-
 ## 🚀 Quick Install
 
 ```bash
 # One-line installation
-curl -sSL https://raw.githubusercontent.com/username/codeselect/main/install.sh | bash
+curl -sSL https://raw.githubusercontent.com/maynetee/codeselect/main/install.sh | bash
 ```
 
 ## ✨ Features
@@ -107,7 +104,3 @@ options:
 CodeSelect was developed in just 30 minutes with the help of Claude, Anthropic's AI assistant. It demonstrates how AI can help create useful developer tools through iterative improvements.
 
 Contributions are welcome! Please feel free to submit a Pull Request.
-
-## 📝 License
-
-This project is licensed under the MIT License - see the LICENSE file for details.

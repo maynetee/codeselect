@@ -14,7 +14,7 @@ CODESELECT_PATH="$USER_BIN/codeselect"
 
 # Download or create the file
 echo "Downloading CodeSelect..."
-curl -fsSL https://raw.githubusercontent.com/username/codeselect/main/codeselect.py -o "$CODESELECT_PATH" 2>/dev/null || {
+curl -fsSL https://raw.githubusercontent.com/maynetee/codeselect/main/codeselect.py -o "$CODESELECT_PATH" 2>/dev/null || {
   # If curl fails (e.g., GitHub URL not yet available), copy from the local file
   if [ -f "codeselect.py" ]; then
     cp "codeselect.py" "$CODESELECT_PATH"
