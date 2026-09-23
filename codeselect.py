@@ -42,17 +42,24 @@ def read_non_comments(path: Path) -> list[str]:
     except (IOError, UnicodeDecodeError, PermissionError):
         return []
 
-def matches_gitignore_pattern(path: str, pattern: str) -> bool:
-    """Check if a path matches a gitignore pattern."""
-    # Handle negation patterns
+def matches_gitignore_pattern(path: str, pattern: str, is_dir=None) -> bool:
+    """Check if a path (relative to the project root) matches a gitignore pattern.
+
+    A leading '!' is ignored here: negation is decided by `is_ignored`, where the
+    last matching pattern wins. `is_dir` tells whether `path` is a directory; when
+    it is None, the path is looked up on disk (only right if `path` is absolute or
+    relative to the current directory).
+    """
     if pattern.startswith('!'):
-        return not matches_gitignore_pattern(path, pattern[1:])
-    
+        pattern = pattern[1:]
+
     # Check if pattern is for directories only
     dir_only = pattern.endswith('/')
     if dir_only:
         pattern = pattern[:-1]
-        if not os.path.isdir(path):
+        if is_dir is None:
+            is_dir = os.path.isdir(path)
+        if not is_dir:
             return False
     
     # Normalize path separators
@@ -61,10 +68,9 @@ def matches_gitignore_pattern(path: str, pattern: str) -> bool:
     
     # Handle patterns with leading /
     if norm_pattern.startswith('/'):
-        norm_pattern = norm_pattern[1:]
-        # Leading / means match from base directory
-        base_path = os.path.basename(norm_path)
-        return fnmatch.fnmatch(base_path, norm_pattern)
+        # Leading / anchors the pattern to the project root: "/build" matches
+        # "build" but not "src/build"
+        return fnmatch.fnmatch(norm_path, norm_pattern[1:])
     
     # Handle ** pattern (matches any directory depth)
     if '**' in norm_pattern:
@@ -93,6 +99,19 @@ def matches_gitignore_pattern(path: str, pattern: str) -> bool:
         fnmatch.fnmatch(os.path.basename(norm_path), norm_pattern) or
         any(fnmatch.fnmatch(part, norm_pattern) for part in norm_path.split('/'))
     )
+
+def is_ignored(rel_path: str, patterns: list[str], is_dir: bool = False) -> bool:
+    """Apply ignore patterns with gitignore semantics: patterns are read in order,
+    the last one that matches decides, and '!pattern' re-includes a path."""
+    ignored = False
+    for pattern in patterns:
+        negated = pattern.startswith('!')
+        body = pattern[1:] if negated else pattern
+        if not body:
+            continue
+        if matches_gitignore_pattern(rel_path, body, is_dir=is_dir):
+            ignored = not negated
+    return ignored
 
 def read_gitignore(path: Path, base_patterns: list[str]) -> list[str]:
     """Read gitignore patterns from a file."""
@@ -157,11 +176,8 @@ def build_file_tree(root_path, ignore_patterns=None):
         # Special case for symlinks to avoid infinite recursion
         if os.path.islink(path):
             return True
-            
-        for pattern in ignore_patterns:
-            if matches_gitignore_pattern(rel_path, pattern) or fnmatch.fnmatch(os.path.basename(path), pattern):
-                return True
-        return False
+
+        return is_ignored(rel_path, ignore_patterns, is_dir=os.path.isdir(path))
 
     root_name = os.path.basename(root_path.rstrip(os.sep))
     if not root_name:  # Case for root directory
@@ -326,9 +342,8 @@ def analyze_dependencies(root_path, file_contents):
     language_patterns = {
         # Python
         '.py': [
-            r'^from\s+([\w.]+)\s+import',
-            r'^import\s+([\w.]+)',
-            r'import\s+([\w.]+)',  # Less strict pattern
+            r'^\s*from\s+([\w.]+)\s+import',
+            r'^\s*import\s+([\w.]+)',
         ],
         # C/C++
         '.c': [r'#include\s+[<"]([^>"]+)[>"]'],
@@ -457,9 +472,12 @@ def analyze_dependencies(root_path, file_contents):
             rel_path_no_ext = os.path.splitext(rel_path)[0]
             file_mapping[rel_path_no_ext] = file_path
             
-            # Handle directory paths for package imports
+            # Handle directory paths for package imports ("from src import util")
             dir_path = os.path.dirname(file_path)
             file_mapping[dir_path] = file_path
+            while '/' in dir_path:
+                dir_path = dir_path[dir_path.find('/')+1:]
+                file_mapping.setdefault(dir_path, file_path)
             
             # Handle path variations
             while '/' in rel_path:
@@ -571,7 +589,8 @@ def write_llm_optimized_output(output_path, root_path, root_node, file_contents,
         if main_dirs:
             f.write("### 📂 Main Components\n\n")
             for dir_node in main_dirs:
-                dir_files = [p for p, _ in file_contents if p.startswith(f"{dir_node.name}/")]
+                prefix = os.path.join(root_node.name, dir_node.name) + os.sep
+                dir_files = [p for p, _ in file_contents if p.startswith(prefix)]
                 f.write(f"- **`{dir_node.name}/`** - ")
                 if dir_files:
                     f.write(f"Contains {len(dir_files)} files")
@@ -595,11 +614,15 @@ def write_llm_optimized_output(output_path, root_path, root_node, file_contents,
         # File relationship graph
         f.write("## 🔄 FILE RELATIONSHIPS\n\n")
 
+        # A dependency is internal when it is one of the analysed files; anything
+        # else (e.g. "react-dom/client", "os") is external, whatever its shape
+        project_files = {p for p, _ in file_contents} | set(dependencies)
+
         # Find most referenced files
         referenced_by = {}
         for file, deps in dependencies.items():
             for dep in deps:
-                if isinstance(dep, str) and os.path.sep in dep:  # It's a file path
+                if dep in project_files:
                     if dep not in referenced_by:
                         referenced_by[dep] = []
                     referenced_by[dep].append(file)
@@ -616,8 +639,8 @@ def write_llm_optimized_output(output_path, root_path, root_node, file_contents,
         f.write("### Dependencies by File\n\n")
         for file, deps in sorted(dependencies.items()):
             if deps:
-                internal_deps = [d for d in deps if isinstance(d, str) and os.path.sep in d]
-                external_deps = [d for d in deps if d not in internal_deps]
+                internal_deps = [d for d in deps if d in project_files]
+                external_deps = [d for d in deps if d not in project_files]
 
                 f.write(f"- **`{file}`**:\n")
 
@@ -646,8 +669,8 @@ def write_llm_optimized_output(output_path, root_path, root_node, file_contents,
             # Add file info if available
             file_deps = dependencies.get(path, set())
             if file_deps:
-                internal_deps = [d for d in file_deps if isinstance(d, str) and os.path.sep in d]
-                external_deps = [d for d in file_deps if d not in internal_deps]
+                internal_deps = [d for d in file_deps if d in project_files]
+                external_deps = [d for d in file_deps if d not in project_files]
 
                 if internal_deps or external_deps:
                     f.write("**Dependencies:**\n")
@@ -904,7 +927,7 @@ def handle_clipboard_only(root_path, root_node, output_format='llm'):
     sys.exit(0)
 
 class FileSelector:
-    def __init__(self, root_node, stdscr, output_format='llm'):
+    def __init__(self, root_node, stdscr, output_format='llm', copy_to_clipboard=True):
         self.root_node = root_node
         self.stdscr = stdscr
         self.current_index = 0
@@ -912,7 +935,7 @@ class FileSelector:
         self.visible_nodes = flatten_tree(root_node)
         self.max_visible = 0
         self.height, self.width = 0, 0
-        self.copy_to_clipboard = True  # Default: copy to clipboard enabled
+        self.copy_to_clipboard = copy_to_clipboard  # starts from --no-clipboard, toggled with B
         self.output_format = output_format  # Store the output format
         self.clipboard_only = False  # Default: create file and copy to clipboard
         self.initialize_curses()
@@ -1174,10 +1197,10 @@ class FileSelector:
 
         return True, self.copy_to_clipboard, False
 
-def interactive_selection(root_node, root_path, output_format='llm'):
+def interactive_selection(root_node, root_path, output_format='llm', copy_to_clipboard=True):
     """Launch the interactive file selection interface."""
     def _run_interface(stdscr):
-        selector = FileSelector(root_node, stdscr, output_format)
+        selector = FileSelector(root_node, stdscr, output_format, copy_to_clipboard)
         return selector.run(root_path)
     
     return curses.wrapper(_run_interface)
@@ -1367,7 +1390,7 @@ def main():
     if not args.skip_selection:
         # Launch interactive selection interface
         try:
-            result = interactive_selection(root_node, root_path, args.format)
+            result = interactive_selection(root_node, root_path, args.format, copy_to_clipboard)
             
             # Unpack result tuple
             if isinstance(result, tuple) and len(result) >= 2:
