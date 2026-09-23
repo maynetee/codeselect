@@ -72,11 +72,11 @@ _codeselect_completion() {
     prev="${COMP_WORDS[COMP_CWORD-1]}"
 
     # Basic options
-    opts="--format --output --skip-selection --no-clipboard --version --help"
+    opts="--format --output --skip-selection --no-clipboard --clipboard-only --version --help"
 
     # Handle specific options
     case "${prev}" in
-        --format|-f)
+        --format)
             COMPREPLY=( $(compgen -W "txt md llm" -- "${cur}") )
             return 0
             ;;
