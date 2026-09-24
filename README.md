@@ -5,6 +5,8 @@
 
 Pick files from a project in a terminal UI and export them as a single document for an LLM: the project tree, a map of which files import which, and the selected sources.
 
+![CodeSelect: pick files in the terminal, export one document with the tree, the import map and the code](docs/demo.gif)
+
 ## Why
 
 I built CodeSelect in February 2025, before agentic coding harnesses such as Claude Code and Codex became part of my workflow. At the time, most of my LLM work happened in chat windows, and giving a model the right context meant pasting files one by one and describing the layout by hand. A model reasons about code far better when it sees the right files and how they relate, so CodeSelect makes that one step: tick the relevant files and get one document with the tree, the import relationships and the code.
@@ -22,6 +24,14 @@ The script copies `codeselect.py` to `~/.local/bin/codeselect` (no admin rights)
 Requirements: Python 3.9+ with `curses` (bundled on macOS and Linux; native Windows needs the `windows-curses` package), plus a system clipboard tool (see [Clipboard](#clipboard)).
 
 Uninstall with `curl -sSL https://raw.githubusercontent.com/maynetee/codeselect/main/uninstall.sh | bash`. It also removes the `export PATH="$HOME/.local/bin:$PATH"` line from your shell config, keeping a `.bak` copy.
+
+## Screenshots
+
+| Pick what the model sees | Get the import map with the code |
+|---|---|
+| ![File selector with the tests directory deselected](docs/screenshot-selector.png) | ![Dependencies by file in the llm output](docs/screenshot-output.png) |
+
+In this demo project, `.gitignore` excludes `node_modules/` and `*.log` but re-includes `logs/keep.log`, and `react-dom/client` is reported as an external dependency.
 
 ## Usage
 
