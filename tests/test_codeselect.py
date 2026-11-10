@@ -1,9 +1,12 @@
 """Tests for codeselect, standard library only: python3 -m unittest discover tests"""
+import io
 import os
 import sys
 import tempfile
 import unittest
+from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
+from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
@@ -116,6 +119,18 @@ class DependencyAnalysis(unittest.TestCase):
         text = out.read_text(encoding="utf-8")
         self.assertIn("**`src/`** - Contains 2 files", text)
         self.assertIn("**`docs/`** - Contains 1 files", text)
+
+
+class InvalidDirectory(unittest.TestCase):
+    def test_error_goes_to_stderr_with_nonzero_exit(self):
+        argv = ["codeselect", str(Path(tempfile.mkdtemp()) / "no-such-dir")]
+        stdout, stderr = io.StringIO(), io.StringIO()
+        with mock.patch.object(sys, "argv", argv):
+            with redirect_stdout(stdout), redirect_stderr(stderr):
+                result = codeselect.main()
+        self.assertEqual(result, 1)
+        self.assertIn("not a valid directory", stderr.getvalue())
+        self.assertNotIn("not a valid directory", stdout.getvalue())
 
 
 if __name__ == "__main__":
