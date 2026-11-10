@@ -1369,7 +1369,7 @@ def main():
     # Resolve directory path
     root_path = os.path.abspath(args.directory)
     if not os.path.isdir(root_path):
-        print(f"Error: {root_path} is not a valid directory")
+        print(f"Error: {root_path} is not a valid directory", file=sys.stderr)
         return 1
 
     # Generate output filename if not specified
